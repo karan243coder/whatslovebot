@@ -378,7 +378,7 @@ def telegram_bot_listener_loop():
                     elif text.startswith("/room") or text.startswith("/create") or text.startswith("/call"):
                         room_id = generate_unique_id(7)
                         active_rooms[room_id] = {"created_at": time.time(), "expires_at": time.time() + 3600, "call_start": None, "messages": [], "files_sent": [], "participants": 0}
-                        srv_url = global_server_url or os.environ.get("SERVER_URL", "https://familiar-gertrudis-botakingtipd-f3991937.koyeb.app").rstrip("/")
+                        srv_url = global_server_url or os.environ.get("SERVER_URL", "https://theoretical-kynthia-mychool-a6f2b3d0.koyeb.app").rstrip("/")
                         room_url = f"{srv_url}/?room={room_id}"
                         send_telegram_direct(chat_id, f"🟢 <b>MEETLINK VIDEO ROOM CREATED!</b>\n━━━━━━━━━━━━━━━━━━\n🆔 Room ID: <code>{room_id}</code>\n⏱️ TTL: 1 Hour (Auto-expires)\n━━━━━━━━━━━━━━━━━━\n🔗 <b>Link:</b> {room_url}\n\n👉 Share this link with anyone to start an instant peer-to-peer HD video call without login!")
                         continue
@@ -395,7 +395,7 @@ def telegram_bot_listener_loop():
                         
                         max_chat_limit = 2000 * 1024 * 1024 if ((API_ID and API_HASH) or (pyro_client and pyro_client.is_connected)) else 20 * 1024 * 1024
                         if file_size > max_chat_limit:
-                            srv_url = global_server_url or os.environ.get("SERVER_URL", "https://familiar-gertrudis-botakingtipd-f3991937.koyeb.app").rstrip("/")
+                            srv_url = global_server_url or os.environ.get("SERVER_URL", "https://theoretical-kynthia-mychool-a6f2b3d0.koyeb.app").rstrip("/")
                             mode_str = "2 GB" if ((API_ID and API_HASH) or (pyro_client and pyro_client.is_connected)) else "20 MB (Standard Bot API)"
                             send_telegram_direct(chat_id, f"⚠️ <b>FILE TOO LARGE FOR BOT CHAT ({mode_str} Limit)</b>\n━━━━━━━━━━━━━━━━━━\nYour file is <b>{fmt_size(file_size)}</b>.\n\n🚀 <b>TO SHARE LARGE FILES (NO LIMIT!):</b>\nPlease upload directly on your MeetLink Website: <b>{srv_url}</b>\n\nThere is NO size limit on the website! You can upload multi-gigabyte files directly on the website and get instant high-speed View & Download links!")
                             continue
@@ -423,7 +423,7 @@ def telegram_bot_listener_loop():
                             "downloads": 0
                         }
                         
-                        srv_url = global_server_url or os.environ.get("SERVER_URL", "https://familiar-gertrudis-botakingtipd-f3991937.koyeb.app").rstrip("/")
+                        srv_url = global_server_url or os.environ.get("SERVER_URL", "https://theoretical-kynthia-mychool-a6f2b3d0.koyeb.app").rstrip("/")
                         share_url = f"{srv_url}/v/{uid}"
                         dl_url_clean = f"{srv_url}/d/{uid}"
                         
