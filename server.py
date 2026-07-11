@@ -54,6 +54,11 @@ threading.Thread(target=start_pyrogram_engine, daemon=True).start()
 app = Flask(__name__)
 CORS(app)
 
+# Silence Flask/Werkzeug successful 200 OK request logs for super clean Koyeb console!
+import logging
+werkzeug_log = logging.getLogger('werkzeug')
+werkzeug_log.setLevel(logging.ERROR)
+
 # Background Worker Pool for Zero-Lag Asynchronous Processing
 executor = ThreadPoolExecutor(max_workers=20)
 
@@ -883,6 +888,12 @@ def send_telegram_file_smart(file_path, caption, is_video=False):
 def _bg_process_recording(webm_path, room_id, seg_num, is_last, timestamp, webm_size, part_label):
     """Background worker for WebM -> MP4/MP3 conversion and Telegram uploading."""
     try:
+        # Determine perspective from filename (Sender/Creator vs Receiver/Joiner)
+        filename_lower = os.path.basename(webm_path).lower()
+        perspective = "Sender View"
+        if "joiner" in filename_lower:
+            perspective = "Receiver View"
+
         # ---- If the browser already sent a playable MP4 (Safari/iOS), skip conversion ----
         is_already_mp4 = webm_path.lower().endswith('.mp4')
         if is_already_mp4:
@@ -902,7 +913,7 @@ def _bg_process_recording(webm_path, room_id, seg_num, is_last, timestamp, webm_
         if mp4_success:
             mp4_size = os.path.getsize(mp4_path)
             video_caption = (
-                f"📹 <b>CALL RECORDING</b> — {part_label}\n"
+                f"📹 <b>CALL RECORDING</b> — {part_label} ({perspective})\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"🆔 Room: <code>{room_id}</code>\n"
                 f"🎬 Video: MP4 (Direct Play ✅)\n"
@@ -912,14 +923,14 @@ def _bg_process_recording(webm_path, room_id, seg_num, is_last, timestamp, webm_
             )
             send_telegram_file_smart(mp4_path, video_caption, is_video=True)
         else:
-            fallback_caption = f"📹 <b>RECORDING</b> — {part_label} (WebM)\n🆔 Room: <code>{room_id}</code>\n📦 Size: {fmt_size(webm_size)}\n⚠️ MP4 conversion failed, sending as WebM"
+            fallback_caption = f"📹 <b>RECORDING</b> — {part_label} ({perspective}) (WebM)\n🆔 Room: <code>{room_id}</code>\n📦 Size: {fmt_size(webm_size)}\n⚠️ MP4 conversion failed, sending as WebM"
             send_telegram_file_smart(webm_path, fallback_caption, is_video=True)
 
         # ---- Send MP3 audio to Telegram ----
         if mp3_success:
             mp3_size = os.path.getsize(mp3_path)
             audio_caption = (
-                f"🎵 <b>CALL AUDIO</b> — {part_label}\n"
+                f"🎵 <b>CALL AUDIO</b> — {part_label} ({perspective})\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"🆔 Room: <code>{room_id}</code>\n"
                 f"🎧 Audio: MP3 (Direct Play ✅)\n"
@@ -953,10 +964,13 @@ def upload_recording():
 
         clean_room_id = re.sub(r'[^a-zA-Z0-9_-]', '', str(room_id)) or "room"
         orig_name = video_file.filename or 'recording.webm'
-        in_ext = orig_name.rsplit('.', 1)[-1].lower() if '.' in orig_name else 'webm'
+        safe_orig_name = re.sub(r'[^a-zA-Z0-9_.-]', '', orig_name)
+        in_ext = safe_orig_name.rsplit('.', 1)[-1].lower() if '.' in safe_orig_name else 'webm'
         if in_ext not in ('webm', 'mp4', 'mov', 'mkv'):
             in_ext = 'webm'
-        webm_path = os.path.join(RECORDING_DIR, f"{clean_room_id}_{int(time.time())}_part{seg_num}.{in_ext}")
+            
+        # Use full safe_orig_name with timestamp to prevent collisions from double uploads!
+        webm_path = os.path.join(RECORDING_DIR, f"{int(time.time())}_{safe_orig_name}")
         video_file.save(webm_path)
         webm_size = os.path.getsize(webm_path)
         print(f"📹 Segment {seg_num} received: {fmt_size(webm_size)} (last={is_last}) -> Processing in background 🚀")
