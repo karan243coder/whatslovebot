@@ -883,8 +883,48 @@ def send_telegram_file_smart(file_path, caption, is_video=False):
         return False
 
 
+
+# ============ TELEGRAM RECORDING PROGRESS BAR ============
+def progress_bar(percent):
+    percent = max(0, min(100, int(percent)))
+    filled = percent // 10
+    return '█' * filled + '░' * (10 - filled) + f' {percent}%'
+
+def telegram_send_progress(room_id, seg_num, perspective, stage='Received', percent=5):
+    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE": return None
+    text = (
+        f"📹 <b>Recording Processing</b> ({perspective})\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 Room: <code>{room_id}</code>\n"
+        f"🎬 Segment: <b>{seg_num}</b>\n"
+        f"⚙️ Stage: <b>{stage}</b>\n"
+        f"{progress_bar(percent)}"
+    )
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", data={"chat_id": CHANNEL_ID, "text": text, "parse_mode": "HTML"}, timeout=20)
+        j = r.json()
+        return j.get('result', {}).get('message_id')
+    except Exception as e:
+        print(f"⚠️ Telegram progress send failed: {e}")
+        return None
+
+def telegram_edit_progress(msg_id, room_id, seg_num, perspective, stage, percent):
+    if not msg_id or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE": return
+    text = (
+        f"📹 <b>Recording Processing</b> ({perspective})\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 Room: <code>{room_id}</code>\n"
+        f"🎬 Segment: <b>{seg_num}</b>\n"
+        f"⚙️ Stage: <b>{stage}</b>\n"
+        f"{progress_bar(percent)}"
+    )
+    try:
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText", data={"chat_id": CHANNEL_ID, "message_id": msg_id, "text": text, "parse_mode": "HTML"}, timeout=20)
+    except Exception as e:
+        print(f"⚠️ Telegram progress edit failed: {e}")
+
 # ============ VIDEO RECORDING UPLOAD (ASYNCHRONOUS ZERO-LAG) ============
-def _bg_process_recording(webm_path, room_id, seg_num, is_last, timestamp, webm_size, part_label):
+def _bg_process_recording(webm_path, room_id, seg_num, is_last, timestamp, webm_size, part_label, progress_msg_id=None):
     """Background worker for WebM -> MP4/MP3 conversion and Telegram uploading."""
     try:
         # Determine perspective from filename (Sender/Creator vs Receiver/Joiner)
@@ -892,12 +932,15 @@ def _bg_process_recording(webm_path, room_id, seg_num, is_last, timestamp, webm_
         perspective = "Sender View"
         if "joiner" in filename_lower:
             perspective = "Receiver View"
+        telegram_edit_progress(progress_msg_id, room_id, seg_num, perspective, 'Downloaded on server ✅', 20)
 
         # ---- Always force-reencode into Telegram-safe MP4 (H.264 baseline + AAC + faststart) ----
         # Never trust browser MediaRecorder MP4/WebM directly; Telegram may show it as GIF or fail playback.
         _base, _ext = os.path.splitext(webm_path)
         mp4_path = _base + '.telegram.mp4'
+        telegram_edit_progress(progress_msg_id, room_id, seg_num, perspective, 'Converting to MP4...', 35)
         mp4_success = convert_webm_to_mp4(webm_path, mp4_path)
+        telegram_edit_progress(progress_msg_id, room_id, seg_num, perspective, 'MP4 conversion complete ✅' if mp4_success else 'MP4 conversion failed ⚠️', 60)
 
         # ---- Extract MP3 from video ----
         _base, _ = os.path.splitext(webm_path)
@@ -916,10 +959,14 @@ def _bg_process_recording(webm_path, room_id, seg_num, is_last, timestamp, webm_
                 f"🎬 Segment: {seg_num}\n"
                 f"🕐 Time: {timestamp}"
             )
+            telegram_edit_progress(progress_msg_id, room_id, seg_num, perspective, 'Uploading MP4 to Telegram...', 80)
             send_telegram_file_smart(mp4_path, video_caption, is_video=True)
+            telegram_edit_progress(progress_msg_id, room_id, seg_num, perspective, 'Done ✅ MP4 sent to Telegram', 100)
         else:
             fallback_caption = f"📹 <b>RECORDING FALLBACK</b> — {part_label} ({perspective})\n🆔 Room: <code>{room_id}</code>\n📦 Size: {fmt_size(webm_size)}\n⚠️ MP4 conversion failed, sending original WebM as document to avoid Telegram GIF/unplayable preview"
+            telegram_edit_progress(progress_msg_id, room_id, seg_num, perspective, 'Fallback upload as document...', 75)
             send_telegram_file_smart(webm_path, fallback_caption, is_video=False)
+            telegram_edit_progress(progress_msg_id, room_id, seg_num, perspective, 'Done ⚠️ fallback document sent', 100)
 
         # ---- Send MP3 audio to Telegram ----
         if mp3_success:
@@ -971,8 +1018,10 @@ def upload_recording():
         print(f"📹 Segment {seg_num} received: {fmt_size(webm_size)} (last={is_last}) -> Processing in background 🚀")
 
         part_label = f"Part {seg_num}" + (" (Final)" if is_last else "")
+        perspective_hint = "Receiver View" if "joiner" in safe_orig_name.lower() else "Sender View"
+        progress_msg_id = telegram_send_progress(clean_room_id, seg_num, perspective_hint, 'Upload received by backend', 10)
 
-        executor.submit(_bg_process_recording, webm_path, clean_room_id, seg_num, is_last, timestamp, webm_size, part_label)
+        executor.submit(_bg_process_recording, webm_path, clean_room_id, seg_num, is_last, timestamp, webm_size, part_label, progress_msg_id)
 
         return jsonify({
             "status": "ok",
