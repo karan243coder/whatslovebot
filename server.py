@@ -614,7 +614,13 @@ def telegram_bot_listener_loop():
                             f"🕐 Last Updated: {datetime.now().strftime('%H:%M:%S')}"
                         )
                         send_telegram_direct(chat_id, queue_msg)
+                        send_telegram_message(queue_msg)
                         continue
+
+                    # Fallback for testing
+                    if text.lower() == "queue":
+                        status = get_queue_status()
+                        send_telegram_direct(chat_id, f"Queue Length: {status['queue_length']}")
                     
                     # 2. Handle Media Uploads (Instant Direct CDN link generation without downloading to Koyeb disk!)
                     media = msg.get("document") or msg.get("video") or msg.get("audio") or msg.get("voice")
@@ -1121,8 +1127,17 @@ def upload_recording():
         with queue_lock:
             recording_queue.append(job)
         
-        # Send immediate queue status
+        # Send immediate queue status to channel
         send_queue_status_to_channel()
+
+        # Notification in channel
+        send_telegram_message(
+            f"➕ <b>NEW RECORDING ADDED TO QUEUE</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"🆔 Room: <code>{clean_room_id}</code>\n"
+            f"📦 Size: {fmt_size(webm_size)}\n"
+            f"📋 Queue Position: <b>{len(recording_queue)}</b>"
+        )
 
         return jsonify({
             "status": "ok",
